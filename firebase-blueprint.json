@@ -1,0 +1,117 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "A user of the platform (Ambassador or Manager)",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "role": { "type": "string", "enum": ["ambassador", "manager"] },
+        "points": { "type": "number" },
+        "badges": { "type": "array", "items": { "type": "string" } },
+        "programs": { "type": "array", "items": { "type": "string" } },
+        "joinedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "email", "role", "points", "joinedAt"]
+    },
+    "Program": {
+      "title": "Program",
+      "description": "A Campus Ambassador program managed by an organization",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "managerId": { "type": "string" },
+        "ambassadorIds": { "type": "array", "items": { "type": "string" } },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "managerId", "createdAt"]
+    },
+    "Task": {
+      "title": "Task",
+      "description": "A challenge assigned to ambassadors",
+      "type": "object",
+      "properties": {
+        "programId": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "points": { "type": "number" },
+        "type": { "type": "string", "enum": ["referral", "promotion", "content", "other"] },
+        "status": { "type": "string", "enum": ["active", "inactive"] },
+        "deadline": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["programId", "title", "points", "type", "status", "createdAt"]
+    },
+    "Submission": {
+      "title": "Submission",
+      "description": "An ambassador's submission for a task",
+      "type": "object",
+      "properties": {
+        "taskId": { "type": "string" },
+        "ambassadorId": { "type": "string" },
+        "programId": { "type": "string" },
+        "proofUrl": { "type": "string" },
+        "textProof": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "pointsAwarded": { "type": "number" },
+        "submittedAt": { "type": "string", "format": "date-time" },
+        "feedback": { "type": "string" },
+        "aiScore": { "type": "number" },
+        "aiReasoning": { "type": "string" }
+      },
+      "required": ["taskId", "ambassadorId", "programId", "status", "submittedAt"]
+    },
+    "Badge": {
+      "title": "Badge",
+      "description": "A reward/achievement badge",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "iconUrl": { "type": "string" },
+        "criteria": { "type": "string" }
+      },
+      "required": ["name", "description"]
+    },
+    "Invitation": {
+      "title": "Invitation",
+      "description": "An invitation sent to an ambassador",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "format": "email" },
+        "programId": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "accepted"] },
+        "sentAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email", "programId", "status", "sentAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Full user profiles."
+    },
+    "/programs/{programId}": {
+      "schema": "Program",
+      "description": "Brand/Organization programs."
+    },
+    "/programs/{programId}/tasks/{taskId}": {
+      "schema": "Task",
+      "description": "Tasks within a program."
+    },
+    "/programs/{programId}/submissions/{submissionId}": {
+      "schema": "Submission",
+      "description": "Submissions for tasks in a program. Storing at program level simplifies manager view."
+    },
+    "/programs/{programId}/invitations/{invitationId}": {
+      "schema": "Invitation",
+      "description": "Invitations to join a program."
+    },
+    "/badges/{badgeId}": {
+      "schema": "Badge",
+      "description": "Global badge definitions."
+    }
+  }
+}

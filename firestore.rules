@@ -1,0 +1,125 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helpers ---
+    function isSignedIn() { return request.auth != null; }
+    function isVerified() { return isSignedIn() && request.auth.token.email_verified == true; }
+    function getUserData() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
+    function isManager() { return isVerified() && getUserData().role == 'manager'; }
+    function isAmbassador() { return isVerified() && getUserData().role == 'ambassador'; }
+    
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    
+    // --- User Rules ---
+    match /users/{userId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn() && (isManager() || userId == request.auth.uid);
+      
+      function isValidUser(data) {
+        return data.name is string && data.name.size() <= 100 &&
+               data.email is string && data.email.size() <= 100 &&
+               data.role in ['ambassador', 'manager'] &&
+               data.points is number &&
+               data.joinedAt is string;
+      }
+      
+      allow create: if isVerified() && userId == request.auth.uid &&
+                       isValidUser(incoming()) &&
+                       incoming().points == 0;
+      
+      allow update: if isVerified() && (
+        (userId == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'email'])) ||
+        (isManager() && incoming().diff(existing()).affectedKeys().hasOnly(['points', 'badges']))
+      );
+    }
+
+    // --- Program Rules ---
+    match /programs/{programId} {
+      allow read: if isSignedIn();
+      
+      function isValidProgram(data) {
+        return data.name is string && data.name.size() <= 100 &&
+               data.managerId == request.auth.uid &&
+               data.createdAt is string;
+      }
+      
+      allow create: if isManager() && isValidProgram(incoming());
+      allow update: if isManager() && existing().managerId == request.auth.uid && isValidProgram(incoming());
+      allow delete: if isManager() && existing().managerId == request.auth.uid;
+
+      // --- Task Rules ---
+      match /tasks/{taskId} {
+        allow read: if isSignedIn();
+        
+        function isValidTask(data) {
+          return data.title is string && data.title.size() <= 200 &&
+                 data.points is number && data.points > 0 &&
+                 data.type in ['referral', 'promotion', 'content', 'other'] &&
+                 data.status in ['active', 'inactive'] &&
+                 data.programId == programId;
+        }
+        
+        allow create: if isManager() && get(/databases/$(database)/documents/programs/$(programId)).data.managerId == request.auth.uid && isValidTask(incoming());
+        allow update: if isManager() && get(/databases/$(database)/documents/programs/$(programId)).data.managerId == request.auth.uid && isValidTask(incoming());
+        allow delete: if isManager() && get(/databases/$(database)/documents/programs/$(programId)).data.managerId == request.auth.uid;
+      }
+
+      // --- Submission Rules ---
+      match /submissions/{submissionId} {
+        allow read: if isSignedIn() && (
+          get(/databases/$(database)/documents/programs/$(programId)).data.managerId == request.auth.uid ||
+          existing().ambassadorId == request.auth.uid
+        );
+        
+        function isValidSubmission(data) {
+          return data.taskId is string &&
+                 data.ambassadorId == request.auth.uid &&
+                 data.programId == programId &&
+                 data.status == 'pending' &&
+                 data.submittedAt is string;
+        }
+        
+        allow create: if isAmbassador() && isValidSubmission(incoming());
+        
+        allow update: if (
+          (isManager() && get(/databases/$(database)/documents/programs/$(programId)).data.managerId == request.auth.uid &&
+           incoming().diff(existing()).affectedKeys().hasAny(['status', 'feedback', 'pointsAwarded', 'aiScore', 'aiReasoning'])) ||
+          (isAmbassador() && existing().ambassadorId == request.auth.uid && 
+           incoming().diff(existing()).affectedKeys().hasOnly(['proofUrl', 'textProof']))
+        );
+      }
+
+      // --- Invitation Rules ---
+      match /invitations/{invitationId} {
+        allow read: if isSignedIn() && (
+          get(/databases/$(database)/documents/programs/$(programId)).data.managerId == request.auth.uid ||
+          request.auth.token.email == existing().email
+        );
+        
+        function isValidInvitation(data) {
+          return data.email is string &&
+                 data.programId == programId &&
+                 data.status in ['pending', 'accepted'] &&
+                 data.sentAt is string;
+        }
+        
+        allow create: if isManager() && get(/databases/$(database)/documents/programs/$(programId)).data.managerId == request.auth.uid && isValidInvitation(incoming());
+        allow update: if (isManager() || (isSignedIn() && request.auth.token.email == existing().email)) &&
+                        incoming().diff(existing()).affectedKeys().hasOnly(['status']);
+      }
+    }
+
+    // --- Badge Rules ---
+    match /badges/{badgeId} {
+      allow read: if isSignedIn();
+      allow write: if isManager();
+    }
+  }
+}
